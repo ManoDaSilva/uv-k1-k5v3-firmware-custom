@@ -175,6 +175,31 @@
             }
         },
         {
+            "name": "Digimode",
+            "inherits": "default",
+            "cacheVariables": {
+                "ENABLE_SPECTRUM": true,
+                "ENABLE_FMRADIO": true,
+                "ENABLE_VOX": false,
+                "ENABLE_AIRCOPY": false,
+                "ENABLE_FEAT_F4HWN_SCREENSHOT": false,
+                "ENABLE_FEAT_F4HWN_GAME": false,
+                "ENABLE_FEAT_F4HWN_SPECTRUM": false,
+                "ENABLE_FEAT_F4HWN_PMR": true,
+                "ENABLE_FEAT_F4HWN_GMRS_FRS_MURS": true,
+                "ENABLE_AUDIO_BAR": false,
+                "ENABLE_FEAT_F4HWN_RESUME_STATE": false,
+                "ENABLE_FEAT_F4HWN_CHARGING_C": false,
+                "ENABLE_FEAT_F4HWN_INV": true,
+                "ENABLE_FEAT_F4HWN_CTR": false,
+                "ENABLE_FEAT_F4HWN_NARROWER": true,
+                "ENABLE_FEAT_F4HWN_RESCUE_OPS": false,
+                "ENABLE_DIGITAL_MODULATION": true,
+                "EDITION_STRING": "Digimode",
+                "TARGET": "f4hwn.digimode"
+            }
+        },
+        {
             "name": "Fusion",
             "inherits": "default",
             "cacheVariables": {
@@ -217,6 +242,10 @@
         {
             "name": "Game",
             "configurePreset": "Game"
+        },
+        {
+            "name": "Digimode",
+            "configurePreset": "Digimode"
         },
         {
             "name": "Fusion",

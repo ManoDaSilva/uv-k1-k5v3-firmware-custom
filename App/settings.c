@@ -1106,6 +1106,9 @@ State[1] = 0
 #ifdef ENABLE_SPECTRUM
     | (1 << 5)
 #endif
+#ifdef ENABLE_DIGITAL_MODULATION
+    | (1 << 6)
+#endif
 #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
     | (1 << 6)
 #endif

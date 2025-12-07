@@ -180,6 +180,9 @@ enable_feature(ENABLE_REGA
 # Thank you @reppad
 enable_feature(ENABLE_EXTRA_UART_CMD)
 
+# WIP from @ManoDaSilva and @mobilinkd
+enable_feature(ENABLE_DIGITAL_MODULATION)
+
 # ---- F4HWN MODS ----
 
 enable_feature(ENABLE_FEAT_F4HWN)
