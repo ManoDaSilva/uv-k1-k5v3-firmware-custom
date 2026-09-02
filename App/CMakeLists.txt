@@ -167,6 +167,37 @@ enable_feature(ENABLE_FEAT_F4HWN_AUDIO_SCOPE)
 enable_feature(ENABLE_COPY_CHAN_TO_VFO)
 enable_feature(ENABLE_REDUCE_LOW_MID_TX_POWER)
 enable_feature(ENABLE_BYP_RAW_DEMODULATORS)
+enable_feature(ENABLE_FLAT_AUDIO)
+
+if(ENABLE_FLAT_AUDIO AND ENABLE_FEAT_F4HWN_AUDIO)
+    message(FATAL_ERROR "ENABLE_FLAT_AUDIO conflicts with ENABLE_FEAT_F4HWN_AUDIO: the audio profiles rewrite REG_2B and REG_2F wholesale and would undo the flat filter state."
+	)
+endif()
+
+if(ENABLE_FLAT_AUDIO AND ENABLE_FEAT_F4HWN_NARROWER)
+    message(FATAL_ERROR "ENABLE_FLAT_AUDIO conflicts with ENABLE_FEAT_F4HWN_NARROWER: the NFM remap runs before the flat bandwidth selection."
+	)
+endif()
+
+#Exposing calibration values from the command line to tweak if needed.
+if(ENABLE_FLAT_AUDIO)
+    if(NOT FLAT_AUDIO_DEV_WIDE)
+        set(FLAT_AUDIO_DEV_WIDE 0x1383)
+    endif()
+    if(NOT FLAT_AUDIO_DEV_NARROW)
+        set(FLAT_AUDIO_DEV_NARROW 0x14D6)
+    endif()
+    if(NOT FLAT_AUDIO_MIC_BIAS_MS)
+        set(FLAT_AUDIO_MIC_BIAS_MS 250)
+    endif()
+    target_compile_definitions(App INTERFACE
+        FLAT_AUDIO_DEV_WIDE=${FLAT_AUDIO_DEV_WIDE}
+        FLAT_AUDIO_DEV_NARROW=${FLAT_AUDIO_DEV_NARROW}
+        FLAT_AUDIO_MIC_BIAS_MS=${FLAT_AUDIO_MIC_BIAS_MS}
+    )
+endif()
+
+
 enable_feature(ENABLE_BLMIN_TMP_OFF)
 enable_feature(ENABLE_SCAN_RANGES)
 

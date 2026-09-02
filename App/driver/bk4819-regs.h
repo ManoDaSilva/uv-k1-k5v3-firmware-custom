@@ -32,6 +32,18 @@ static const RegisterSpec afcDisableRegSpec = {"AFC Disable", 0x73, 4, 1, 1};
 static const RegisterSpec afOutRegSpec = {"AF Output Select", 0x47, 8, 0xF, 1};
 static const RegisterSpec afDacGainRegSpec = {"AF DAC Gain", 0x48, 0, 0xF, 1};
 
+
+#ifdef ENABLE_FLAT_AUDIO
+// BK4829: ALC disable lives at REG_7D<6>. On the BK4819 it was REG_4B<5>.
+// See BK4829 Registers Table DRT01-230605-C01 V1.0, section 1, REG_7D.
+static const RegisterSpec alcDisableRegSpec    = {"ALC Disable",     0x7D,  6, 1, 1};
+static const RegisterSpec micAgcDisableRegSpec = {"MIC AGC Disable", 0x19, 15, 1, 1};
+static const RegisterSpec micAdcEnableRegSpec  = {"MIC ADC Enable",  0x30,  2, 1, 1};
+// BK4829 MIC sensitivity is 6 bits (BK4819 had 5).
+static const RegisterSpec micSensRegSpec       = {"MIC Sensitivity", 0x7D,  0, 0x3F, 1};
+#endif
+
+
 enum BK4819_REGISTER_t {
     BK4819_REG_00 = 0x00U,
     BK4819_REG_02 = 0x02U,
@@ -60,7 +72,13 @@ enum BK4819_REGISTER_t {
     BK4819_REG_24 = 0x24U,
     BK4819_REG_28 = 0x28U,
     BK4819_REG_29 = 0x29U,
+	// Noise gate time constant
+	BK4819_REG_2A = 0x2AU,
+	// AF amplitude detection frame length <14:12>, pre/de-emphasis DRC time constant <11:6>, pre-emphasis gain <5:0>
     BK4819_REG_2B = 0x2BU,
+    BK4819_REG_2C = 0x2CU,
+	// De-emphasis gain <13:8>, Tx soft limiter factor <7:5>, Tx soft limiter threshold <4:0>
+    BK4819_REG_2F = 0x2FU,	
     BK4819_REG_30 = 0x30U,
     BK4819_REG_31 = 0x31U,
     BK4819_REG_32 = 0x32U,
@@ -75,6 +93,8 @@ enum BK4819_REGISTER_t {
     BK4819_REG_3D = 0x3DU,
     BK4819_REG_3E = 0x3EU,
     BK4819_REG_3F = 0x3FU,
+	// TX deviation
+	BK4819_REG_40 = 0x40U,
     BK4819_REG_43 = 0x43U,
     BK4819_REG_46 = 0x46U,
     BK4819_REG_47 = 0x47U,

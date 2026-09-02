@@ -43,6 +43,7 @@
                 "ENABLE_COPY_CHAN_TO_VFO": true,
                 "ENABLE_REDUCE_LOW_MID_TX_POWER": false,
                 "ENABLE_BYP_RAW_DEMODULATORS": false,
+				"ENABLE_FLAT_AUDIO": false,
                 "ENABLE_BLMIN_TMP_OFF": false,
                 "ENABLE_SCAN_RANGES": true,
                 "ENABLE_EXTRA_UART_CMD": false,
@@ -225,6 +226,25 @@
                 "TARGET": "f4hwn.fusion"
             }
         }
+		{
+			"name": "FlatAudio",
+			"inherits": "default",
+			"cacheVariables": {
+				"ENABLE_FLAT_AUDIO": true,
+				"ENABLE_VOX": false,
+				"ENABLE_FMRADIO": false,
+				"ENABLE_AIRCOPY": false,
+				"ENABLE_ALARM": false,
+				"ENABLE_TX1750": false,
+				"ENABLE_DTMF_CALLING": false,
+				"ENABLE_SPECTRUM": false,
+				"ENABLE_FEAT_F4HWN_SLEEP": false,
+				"ENABLE_FEAT_F4HWN_AUDIO": false,
+				"ENABLE_FEAT_F4HWN_NARROWER": false,
+				"EDITION_STRING": "FlatAudio",
+				"TARGET": "f4hwn.flataudio"
+			}
+		}
     ],
     "buildPresets": [
         {
@@ -255,5 +275,9 @@
             "name": "Fusion",
             "configurePreset": "Fusion"
         }
+		{ 
+			"name": "FlatAudio", 
+			"configurePreset": "FlatAudio" 
+		}
     ]
 }

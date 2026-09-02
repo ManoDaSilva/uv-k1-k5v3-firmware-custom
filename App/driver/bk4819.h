@@ -50,6 +50,10 @@ enum BK4819_FilterBandwidth_t
     BK4819_FILTER_BW_NARROW,
     BK4819_FILTER_BW_NARROWER,
     BK4819_FILTER_BW_AM
+#ifdef ENABLE_FLAT_AUDIO
+    BK4819_FILTER_BW_FLAT_WIDE,
+    BK4819_FILTER_BW_FLAT_NARROW,
+#endif
 };
 
 typedef enum BK4819_FilterBandwidth_t BK4819_FilterBandwidth_t;
@@ -178,4 +182,10 @@ void     BK4819_GetVoxAmp(uint16_t *pResult);
 void     BK4819_SetScrambleFrequencyControlWord(uint32_t Frequency);
 void     BK4819_PlayDTMFEx(bool bLocalLoopback, char Code);
 
+#endif
+
+#ifdef ENABLE_FLAT_AUDIO
+extern bool gBK4819_FlatAudio;
+void BK4819_SetFlatAudioFilters(bool flat);
+void BK4819_PrepareFlatTransmit(const BK4819_FilterBandwidth_t Bandwidth);
 #endif

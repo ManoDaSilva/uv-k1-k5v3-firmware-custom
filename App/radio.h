@@ -66,6 +66,9 @@ typedef enum {
     MODULATION_RAW,
 #endif
 
+#ifdef ENABLE_FLAT_AUDIO
+    MODULATION_FLAT,
+#endif
     MODULATION_UKNOWN
 } ModulationMode_t;
 

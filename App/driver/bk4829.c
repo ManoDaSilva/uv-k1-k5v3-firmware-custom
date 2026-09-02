@@ -39,6 +39,11 @@ static const uint16_t FSK_RogerTable[7] = {0xF1A2, 0x7446, 0x61A4, 0x6544, 0x4E8
 
 static uint16_t gBK4819_GpioOutState;
 
+#ifdef ENABLE_FLAT_AUDIO
+static uint16_t gBK4819_DefaultDeviation;
+bool gBK4819_FlatAudio = false;
+#endif
+
 #define SHORT_DELAY()                                                          \
   __asm volatile("nop\n nop\n nop\n nop\n nop\n"                               \
                  "nop\n nop\n nop\n nop\n nop\n"                               \
@@ -147,7 +152,9 @@ void BK4819_Init(void)
         // (58u <<  4) |     // AF Rx Gain-2
         // ( 8u <<  0));     // AF DAC Gain (after Gain-1 and Gain-2)
         0x33A8);
-
+#ifdef ENABLE_FLAT_AUDIO
+    gBK4819_DefaultDeviation = BK4819_ReadRegister(BK4819_REG_40);
+#endif
     BK4819_WriteRegister(0x40, 0x3516);
 
 #if 1
@@ -199,6 +206,16 @@ void BK4819_Init(void)
 
     BK4819_WriteRegister(BK4819_REG_33, 0x9000);
     BK4819_WriteRegister(BK4819_REG_3F, 0);
+#ifdef ENABLE_FLAT_AUDIO
+    // The MIC input DC bias only self-corrects while the MIC ADC runs with the
+    // Rx DSP disabled. REG_30<2> = MIC ADC enable, <1> = Tx DSP, <0> = Rx DSP.
+    // Identical bit layout on BK4819 and BK4829.
+    // Settling time scales with the MIC coupling capacitor: ~250 ms for 1uF,
+    // ~2.5 s for 10uF.
+    BK4819_WriteRegister(BK4819_REG_30, 0x0004);
+    SYSTEM_DelayMs(FLAT_AUDIO_MIC_BIAS_MS);
+    BK4819_WriteRegister(BK4819_REG_30, 0x0000);
+#endif	
 }
 
 static uint16_t BK4819_ReadU16(void)
@@ -683,6 +700,27 @@ void BK4819_SetFilterBandwidth(const BK4819_FilterBandwidth_t Bandwidth, const b
     uint16_t val = 0;
     switch (Bandwidth)
     {
+#ifdef ENABLE_FLAT_AUDIO
+		case BK4819_FILTER_BW_FLAT_WIDE:
+			// 0x45E8 = (0b100 << 12) | (0b010 << 9) | (0b111 << 6) |
+			//          (0b10 << 4)   | (1 << 3)
+			//  RF 4.0 kHz and weak-RF 3.0 kHz, both doubled by bit<5> in 25k mode
+			//  => RF 8.0 kHz, weak-RF 6.0 kHz. AF Tx LPF2 4.0 kHz (bypassed later
+			//  by REG_47<0>). FM gain 0 dB.
+			//  The BK4819 version asked for 7.5 kHz; the BK4829 code table has no
+			//  7.5 kHz step. Use (0b011 << 12) for 7.0 kHz if 8.0 is too wide.
+			val = 0x45E8;
+			break;
+
+		case BK4819_FILTER_BW_FLAT_NARROW:
+			// 0x5808 = (0b101 << 12) | (0b100 << 9) | (0b000 << 6) |
+			//          (0b00 << 4)   | (1 << 3)
+			//  RF 4.5 kHz, weak-RF 4.0 kHz, AF Tx LPF2 3.0 kHz, 12.5k mode.
+			//  The BK4819 version used 3.75 kHz for weak-RF; the BK4829 table
+			//  jumps 3.5 -> 4.0, so 4.0 is the nearest step upward.
+			val = 0x5808;
+			break;
+#endif		
         case BK4819_FILTER_BW_WIDE: // 25kHz
             // 0x3028 = (0b011 << 12) | (0b000 << 9) | (0b000 << 6) |
             //          (0b10 << 4)  | (1 << 3)
@@ -724,7 +762,72 @@ void BK4819_SetFilterBandwidth(const BK4819_FilterBandwidth_t Bandwidth, const b
     }
 
     BK4819_WriteRegister(BK4819_REG_43, val);
+#ifdef ENABLE_FLAT_AUDIO
+    BK4819_SetFlatAudioFilters(Bandwidth == BK4819_FILTER_BW_FLAT_WIDE ||
+                               Bandwidth == BK4819_FILTER_BW_FLAT_NARROW);
+#endif	
 }
+
+#ifdef ENABLE_FLAT_AUDIO
+void BK4819_SetFlatAudioFilters(bool flat)
+{
+    uint16_t reg;
+
+    // REG_2B, identical assignment on BK4819 and BK4829, 1 = disable:
+    //  <10> AF Rx HPF300  <9> AF Rx LPF3K  <8> AF Rx de-emphasis
+    //  <2>  AF Tx HPF300  <1> AF Tx LPF1   <0> AF Tx pre-emphasis
+    reg = BK4819_ReadRegister(BK4819_REG_2B);
+    reg &= ~((7u << 8) | 7u);
+    if (flat)
+        reg |= (7u << 8) | 7u;
+    BK4819_WriteRegister(BK4819_REG_2B, reg);
+
+    // REG_7E <5:3> DC filter BW for Tx (MIC in), <2:0> DC filter BW for Rx
+    // (IF in). 000 = bypass on both parts. Stock value here is 0x303E.
+    reg = BK4819_ReadRegister(BK4819_REG_7E);
+    reg &= ~0x3Fu;
+    if (!flat)
+        reg |= (5u << 3) | 6u;
+    BK4819_WriteRegister(BK4819_REG_7E, reg);
+
+    // BK4829 only. A second DC filter stage that has no BK4819 equivalent:
+    //  REG_28<11:9> Rx DCC filter (HPF1), 000 = bypass
+    //  REG_28<8>    Rx AF noise gate enable (Init leaves this ON via 0x0B40)
+    //  REG_29<11:9> Tx DCC filter (HPF1), 000 = bypass
+    // On the BK4819 these two registers held the expander/compressor, which is
+    // why BK4819_SetCompander() must never run while flat mode is active.
+    reg = BK4819_ReadRegister(BK4819_REG_28);
+    reg &= ~((7u << 9) | (1u << 8));
+    if (!flat)
+        reg |= (5u << 9) | (1u << 8);   // restore Init value 0x0B40
+    BK4819_WriteRegister(BK4819_REG_28, reg);
+
+    reg = BK4819_ReadRegister(BK4819_REG_29);
+    reg &= ~(7u << 9);
+    if (!flat)
+        reg |= (5u << 9);               // restore Init value 0xAA00
+    BK4819_WriteRegister(BK4819_REG_29, reg);
+
+    // BK4829 only. REG_2F <13:8> de-emphasis gain (24 = 0 dB),
+    // <7:5> Tx soft limiter factor (000 = bypass, 111 = hard limit),
+    // <4:0> soft limiter threshold. Init leaves the limiter at factor 4.
+    reg = BK4819_ReadRegister(BK4819_REG_2F);
+    reg &= ~((0x3Fu << 8) | (7u << 5));
+    reg |= (24u << 8);
+    if (!flat)
+        reg |= (4u << 5);               // restore Init value 0x9890
+    BK4819_WriteRegister(BK4819_REG_2F, reg);
+
+    // BK4829 only. REG_2C<5:0> pre-emphasis gain, 24 = 0 dB, 34 = 10 dB.
+    // The pre-emphasis filter is already off via REG_2B<0>; this removes the
+    // gain stage behind it as well.
+    reg = BK4819_ReadRegister(BK4819_REG_2C);
+    reg &= ~0x3Fu;
+    reg |= flat ? 24u : 34u;            // 34 matches Init value 0x1822
+    BK4819_WriteRegister(BK4819_REG_2C, reg);
+}
+#endif
+
 
 void BK4819_SetupPowerAmplifier(const uint8_t bias, const uint32_t frequency)
 {
@@ -804,6 +907,21 @@ void BK4819_SetupSquelch(
     // <7:0>   8 Glitch threshold for Squelch = open
     //         0 ~ 255
     //
+    // REG_4E on BK4829:
+    //  <15:12> Squelch = 1 (open)  delay setting, default 0b0110
+    //  <11:8>  Squelch = 0 (close) delay setting, default 0b1111
+    //  <7:0>   Glitch threshold for Squelch = 1
+    // The BK4819 fields were <13:11> and <10:9>, so this cannot be copied
+    // from the BK4819 patch verbatim. The stock expression below happens to
+    // produce 0x6F00, which is the correct BK4829 default.
+#ifdef ENABLE_FLAT_AUDIO
+    if (gBK4819_FlatAudio)
+        BK4819_WriteRegister(BK4819_REG_4E,
+            (0u << 12) |                  // open  delay 0
+            (15u << 8) |                  // close delay unchanged
+            SquelchOpenGlitchThresh);
+    else
+#endif		
     BK4819_WriteRegister(BK4819_REG_4E,
     (1u << 14) |                  // 1 ???
     (5u << 11) |                  // 5 squelch = open  delay .. 0 ~ 7
@@ -1217,7 +1335,72 @@ void BK4819_ExitBypass(void)
     // Keep existing REG_7E logic from your current implementation.
     uint16_t regVal = BK4819_ReadRegister(BK4819_REG_7E);
     BK4819_WriteRegister(BK4819_REG_7E, (regVal & ~(0b111 << 3)) | (5u << 3));
+	
+#ifdef ENABLE_FLAT_AUDIO
+    BK4819_SetRegValue(micAgcDisableRegSpec, 0);
+    // Bit 6 clear re-enables the ALC on the BK4829.
+    BK4819_WriteRegister(BK4819_REG_7D,
+        0xE900 | (gEeprom.MIC_SENSITIVITY_TUNING & 0x3F));
+    BK4819_WriteRegister(BK4819_REG_40, gBK4819_DefaultDeviation);
+#endif	
 }
+
+#ifdef ENABLE_FLAT_AUDIO
+void BK4819_PrepareFlatTransmit(const BK4819_FilterBandwidth_t Bandwidth)
+{
+    uint16_t reg;
+
+    // Mute AF output and bypass the whole AF Tx filter chain (REG_47<0>).
+    // 0x6042 is the base word BK4819_SetAF() uses on this target, so the
+    // undocumented bits stay as the rest of the driver sets them.
+    BK4819_WriteRegister(BK4819_REG_47, 0x6042 | (BK4819_AF_MUTE << 8) | 1u);
+
+    // Bypass the Tx DC filter and force AGC into fix mode (REG_7E<15>).
+    reg = BK4819_ReadRegister(BK4819_REG_7E);
+    BK4819_WriteRegister(BK4819_REG_7E, (reg & ~(7u << 3)) | (1u << 15));
+
+    // Bypass the BK4829 Tx DCC filter stage.
+    reg = BK4819_ReadRegister(BK4819_REG_29);
+    BK4819_WriteRegister(BK4819_REG_29, reg & ~(7u << 9));
+
+    // Disable AF Tx HPF300, LPF1, pre-emphasis.
+    reg = BK4819_ReadRegister(BK4819_REG_2B);
+    BK4819_WriteRegister(BK4819_REG_2B, reg | 7u);
+
+    // Bypass the BK4829 Tx soft limiter.
+    reg = BK4819_ReadRegister(BK4819_REG_2F);
+    BK4819_WriteRegister(BK4819_REG_2F, reg & ~(7u << 5));
+
+    // ALC off (BK4829 REG_7D<6>), MIC sensitivity minimum, MIC AGC off.
+    BK4819_WriteRegister(BK4819_REG_7D, 0xE900 | (1u << 6));
+    BK4819_SetRegValue(micAgcDisableRegSpec, 1);
+
+    // Deviation. Bits <15:13> come from the factory value, <12> enables the
+    // deviation block, <11:0> is the tuning word. These constants are the
+    // BK4819 values and are a starting point only: the BK4829 default here is
+    // 0x3516 rather than 0x34D0, so expect to recalibrate against a
+    // deviation meter or an SDR.
+    switch (Bandwidth)
+    {
+        default:
+        case BK4819_FILTER_BW_NARROW:
+        case BK4819_FILTER_BW_NARROWER:
+        case BK4819_FILTER_BW_FLAT_NARROW:
+            BK4819_WriteRegister(BK4819_REG_40,
+                (gBK4819_DefaultDeviation & 0xE000) | FLAT_AUDIO_DEV_NARROW);
+            break;
+        case BK4819_FILTER_BW_WIDE:
+        case BK4819_FILTER_BW_FLAT_WIDE:
+            BK4819_WriteRegister(BK4819_REG_40,
+                (gBK4819_DefaultDeviation & 0xE000) | FLAT_AUDIO_DEV_WIDE);
+            break;
+    }
+
+    BK4819_ExitTxMute();
+    BK4819_TxOn_Beep();
+}
+#endif
+
 
 void BK4819_PrepareTransmit(void)
 {

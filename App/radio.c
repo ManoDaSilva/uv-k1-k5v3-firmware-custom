@@ -54,6 +54,10 @@ const char gModulationStr[MODULATION_UKNOWN][4] = {
     [MODULATION_BYP]="BYP",
     [MODULATION_RAW]="RAW"
 #endif
+
+#ifdef ENABLE_FLAT_AUDIO
+    [MODULATION_FLAT]="FLT",
+#endif
 };
 
 #ifdef ENABLE_FEAT_F4HWN_AUDIO
@@ -748,10 +752,21 @@ void RADIO_SetupRegisters(bool switchToForeground)
             Bandwidth = BK4819_FILTER_BW_NARROWER;
         }
     #endif
+	
+	#ifdef ENABLE_FLAT_AUDIO
+    if (gRxVfo->Modulation == MODULATION_FLAT)
+        Bandwidth = (gRxVfo->CHANNEL_BANDWIDTH == BK4819_FILTER_BW_WIDE)
+                  ? BK4819_FILTER_BW_FLAT_WIDE
+                  : BK4819_FILTER_BW_FLAT_NARROW;
+	#endif
 
-    AUDIO_AudioPathOff();
-
-    gEnableSpeaker = false;
+	#ifdef ENABLE_FLAT_AUDIO
+    if (gRxVfo->Modulation != MODULATION_FLAT)
+	#endif
+    {
+        AUDIO_AudioPathOff();
+        gEnableSpeaker = false;
+    }
 
     BK4819_ToggleGpioOut(BK4819_GPIO6_PIN2_GREEN, false);
 
@@ -767,6 +782,10 @@ void RADIO_SetupRegisters(bool switchToForeground)
             case BK4819_FILTER_BW_WIDE:
             case BK4819_FILTER_BW_NARROW:
             case BK4819_FILTER_BW_NARROWER:
+			#ifdef ENABLE_FLAT_AUDIO
+            case BK4819_FILTER_BW_FLAT_WIDE:
+            case BK4819_FILTER_BW_FLAT_NARROW:
+            #endif
                 #ifdef ENABLE_AM_FIX
     //              BK4819_SetFilterBandwidth(Bandwidth, gRxVfo->Modulation == MODULATION_AM && gSetting_AM_fix);
                     BK4819_SetFilterBandwidth(Bandwidth, true);
@@ -793,6 +812,12 @@ void RADIO_SetupRegisters(bool switchToForeground)
         SYSTEM_DelayMs(1);
     }
     BK4819_WriteRegister(BK4819_REG_3F, 0);
+
+#ifdef ENABLE_FLAT_AUDIO
+    if (gRxVfo->Modulation == MODULATION_FLAT)
+        BK4819_WriteRegister(BK4819_REG_7D, 0xE900);
+    else
+#endif
 
     // mic gain 0.5dB/step 0 to 63
     BK4819_WriteRegister(BK4819_REG_7D, 0xE940 | (gEeprom.MIC_SENSITIVITY_TUNING & 0x3f));
@@ -994,6 +1019,10 @@ void RADIO_SetTxParameters(void)
         case BK4819_FILTER_BW_WIDE:
         case BK4819_FILTER_BW_NARROW:
         case BK4819_FILTER_BW_NARROWER:
+		#ifdef ENABLE_FLAT_AUDIO
+        case BK4819_FILTER_BW_FLAT_WIDE:
+        case BK4819_FILTER_BW_FLAT_NARROW:
+        #endif
             #ifdef ENABLE_AM_FIX
 //              BK4819_SetFilterBandwidth(Bandwidth, gCurrentVfo->Modulation == MODULATION_AM && gSetting_AM_fix);
                 BK4819_SetFilterBandwidth(Bandwidth, true);
@@ -1008,9 +1037,15 @@ void RADIO_SetTxParameters(void)
     // TX compressor
     BK4819_SetCompander((gRxVfo->Modulation == MODULATION_FM && (gRxVfo->Compander == 1 || gRxVfo->Compander >= 3)) ? gRxVfo->Compander : 0);
 
-    BK4819_PrepareTransmit();
-
-    SYSTEM_DelayMs(10);
+#ifdef ENABLE_FLAT_AUDIO
+    if (gCurrentVfo->Modulation == MODULATION_FLAT) {
+        BK4819_PrepareFlatTransmit(Bandwidth);
+    } else
+#endif
+    {
+        BK4819_PrepareTransmit();
+        SYSTEM_DelayMs(10);
+    }
 
     BK4819_PickRXFilterPathBasedOnFrequency(gCurrentVfo->pTX->Frequency);
 
@@ -1065,6 +1100,31 @@ void RADIO_SetModulation(ModulationMode_t modulation)
     // Ensure we always leave bypass / raw mode before applying normal modulation settings.
     BK4819_ExitBypass();
     #endif
+	
+	#ifdef ENABLE_FLAT_AUDIO
+    gBK4819_FlatAudio = (modulation == MODULATION_FLAT);
+
+    if (modulation == MODULATION_FLAT) {
+        // FM demodulator, not BYPASS. mobilinkd found BYPASS unusable and
+        // switched to FM demod in commit 591419c.
+        BK4819_SetAF(BK4819_AF_FM);
+
+        uint16_t r31 = BK4819_ReadRegister(BK4819_REG_31);
+        BK4819_WriteRegister(BK4819_REG_31, r31 & 0xFFFE);  // AM demod off
+        BK4819_WriteRegister(BK4819_REG_42, 0x6b5a);
+        BK4819_WriteRegister(BK4819_REG_2A, 0x7400);
+
+        BK4819_SetFlatAudioFilters(true);
+
+        BK4819_SetRegValue(afDacGainRegSpec, 0xF);
+        BK4819_WriteRegister(BK4819_REG_3D, 0x2AAB);        // 8.46 kHz IF
+        BK4819_SetRegValue(afcDisableRegSpec, 0);           // AFC on
+        RADIO_SetupAGC(false, false);
+        return;
+    }
+
+    BK4819_SetFlatAudioFilters(false);
+#endif
 
     BK4819_AF_Type_t mod;
     switch(modulation) {
@@ -1233,6 +1293,12 @@ void RADIO_PrepareTX(void)
     else if (gCurrentVfo->Modulation == MODULATION_BYP || gCurrentVfo->Modulation == MODULATION_RAW) {
         // BYP/RAW are receive-only modes.
         State = VFO_STATE_TX_DISABLE;
+    }
+#endif
+#ifdef ENABLE_FLAT_AUDIO
+    else if (gCurrentVfo->Modulation == MODULATION_FLAT) {
+        // Flat mode is a transmit mode; do not fall into the non-FM TX block below.
+        State = VFO_STATE_NORMAL;
     }
 #endif
 #ifndef ENABLE_TX_WHEN_AM
