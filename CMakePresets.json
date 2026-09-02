@@ -225,7 +225,7 @@
                 "EDITION_STRING": "Fusion",
                 "TARGET": "f4hwn.fusion"
             }
-        }
+        },
 		{
 			"name": "FlatAudio",
 			"inherits": "default",
@@ -274,7 +274,7 @@
         {
             "name": "Fusion",
             "configurePreset": "Fusion"
-        }
+        },
 		{ 
 			"name": "FlatAudio", 
 			"configurePreset": "FlatAudio" 

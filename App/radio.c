@@ -52,7 +52,7 @@ const char gModulationStr[MODULATION_UKNOWN][4] = {
 
 #ifdef ENABLE_BYP_RAW_DEMODULATORS
     [MODULATION_BYP]="BYP",
-    [MODULATION_RAW]="RAW"
+    [MODULATION_RAW]="RAW",
 #endif
 
 #ifdef ENABLE_FLAT_AUDIO
@@ -812,14 +812,14 @@ void RADIO_SetupRegisters(bool switchToForeground)
         SYSTEM_DelayMs(1);
     }
     BK4819_WriteRegister(BK4819_REG_3F, 0);
-
+    // mic gain 0.5dB/step 0 to 63
+    // BK4829: REG_7D<6> is ALC disable, <5:0> is MIC sensitivity.
+    // The BK4819 base word 0xE940 sets bit 6 and silently kills the ALC.
 #ifdef ENABLE_FLAT_AUDIO
     if (gRxVfo->Modulation == MODULATION_FLAT)
         BK4819_WriteRegister(BK4819_REG_7D, 0xE900);
     else
 #endif
-
-    // mic gain 0.5dB/step 0 to 63
     BK4819_WriteRegister(BK4819_REG_7D, 0xE940 | (gEeprom.MIC_SENSITIVITY_TUNING & 0x3f));
 
     uint32_t Frequency;
@@ -1004,6 +1004,13 @@ void RADIO_SetTxParameters(void)
             Bandwidth = BK4819_FILTER_BW_NARROWER;
         }
     #endif
+	
+#ifdef ENABLE_FLAT_AUDIO
+    if (gCurrentVfo->Modulation == MODULATION_FLAT)
+        Bandwidth = (gCurrentVfo->CHANNEL_BANDWIDTH == BK4819_FILTER_BW_WIDE)
+                  ? BK4819_FILTER_BW_FLAT_WIDE
+                  : BK4819_FILTER_BW_FLAT_NARROW;
+#endif
 
     AUDIO_AudioPathOff();
 

@@ -152,10 +152,14 @@ void BK4819_Init(void)
         // (58u <<  4) |     // AF Rx Gain-2
         // ( 8u <<  0));     // AF DAC Gain (after Gain-1 and Gain-2)
         0x33A8);
+
+    BK4819_WriteRegister(0x40, 0x3516);
+	
 #ifdef ENABLE_FLAT_AUDIO
+    // Capture what the firmware actually uses, so ExitBypass() restores that
+    // rather than the post-reset hardware default.
     gBK4819_DefaultDeviation = BK4819_ReadRegister(BK4819_REG_40);
 #endif
-    BK4819_WriteRegister(0x40, 0x3516);
 
 #if 1
     const uint8_t dtmf_coeffs[] = {111, 107, 103, 98, 80, 71, 58, 44, 65, 55, 37, 23, 228, 203, 181, 159};
